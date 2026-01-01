@@ -9,7 +9,7 @@ use reth_node_core::args::LogArgs;
 #[derive(Debug, Clone, Args)]
 pub struct BlockSourceArgs {
     /// Block source to use for the benchmark.
-    /// Example: s3://hl-mainnet-evm-blocks
+    /// Example: s3://hl-mainnet-evm-blocks (requires s3 feature)
     /// Example: /home/user/personal/evm-blocks
     ///
     /// For S3, you can use environment variables like AWS_PROFILE, etc.
@@ -20,6 +20,7 @@ pub struct BlockSourceArgs {
     local_ingest_dir: Option<String>,
 
     /// Shorthand of --block-source=s3://hl-mainnet-evm-blocks
+    #[cfg(feature = "s3")]
     #[arg(long, default_value_t = false)]
     s3: bool,
 
@@ -28,6 +29,7 @@ pub struct BlockSourceArgs {
     local: bool,
 
     /// Interval for polling new blocks in S3 in milliseconds.
+    #[cfg(feature = "s3")]
     #[arg(id = "s3.polling-interval", long = "s3.polling-interval", default_value = "25")]
     s3_polling_interval: u64,
 
@@ -49,6 +51,7 @@ impl BlockSourceArgs {
     }
 
     async fn create_base_config(&self) -> eyre::Result<BlockSourceConfig> {
+        #[cfg(feature = "s3")]
         if self.s3 {
             return Ok(BlockSourceConfig::s3_default(Duration::from_millis(
                 self.s3_polling_interval,
@@ -62,19 +65,27 @@ impl BlockSourceArgs {
 
         let Some(value) = self.block_source.as_ref() else {
             return Err(eyre::eyre!(
-                "You need to specify a block source e.g., --s3 or --block-source=/path/to/blocks"
+                "You need to specify a block source e.g., --local or --block-source=/path/to/blocks"
             ));
         };
 
+        #[cfg(feature = "s3")]
         if let Some(bucket) = value.strip_prefix("s3://") {
-            Ok(BlockSourceConfig::s3(
+            return Ok(BlockSourceConfig::s3(
                 bucket.to_string(),
                 Duration::from_millis(self.s3_polling_interval),
             )
-            .await)
-        } else {
-            Ok(BlockSourceConfig::local(value.into()))
+            .await);
         }
+
+        #[cfg(not(feature = "s3"))]
+        if value.starts_with("s3://") {
+            return Err(eyre::eyre!(
+                "S3 block source requires the 's3' feature. Compile with --features s3"
+            ));
+        }
+
+        Ok(BlockSourceConfig::local(value.into()))
     }
 
     fn apply_node_source_config(&self, config: BlockSourceConfig) -> BlockSourceConfig {

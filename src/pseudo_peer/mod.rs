@@ -25,8 +25,10 @@ pub mod prelude {
     pub use super::{
         config::BlockSourceConfig,
         service::{BlockPoller, PseudoPeer},
-        sources::{BlockSource, CachedBlockSource, LocalBlockSource, S3BlockSource},
+        sources::{BlockSource, CachedBlockSource, LocalBlockSource},
     };
+    #[cfg(feature = "s3")]
+    pub use super::sources::S3BlockSource;
 }
 
 use crate::chainspec::HlChainSpec;

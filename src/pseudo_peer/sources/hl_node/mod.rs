@@ -38,7 +38,7 @@ pub struct HlNodeBlockSourceArgs {
 /// Block source that monitors the local ingest directory for the HL node.
 #[derive(Debug, Clone)]
 pub struct HlNodeBlockSource {
-    pub fallback: BlockSourceBoxed,
+    pub fallback: Option<BlockSourceBoxed>,
     pub local_blocks_cache: Arc<Mutex<LocalBlocksCache>>,
     pub last_local_fetch: Arc<Mutex<Option<(u64, OffsetDateTime)>>>,
     pub args: HlNodeBlockSourceArgs,
@@ -74,6 +74,11 @@ impl BlockSource for HlNodeBlockSource {
                 return Ok(block);
             }
 
+            // No fallback configured - error out
+            let Some(fallback) = fallback else {
+                return Err(eyre::eyre!("Block {} not found locally", height));
+            };
+
             if let Some((last_height, last_poll_time)) = *last_local_fetch.lock().await {
                 let more_recent = last_height < height;
                 let too_soon = now - last_poll_time < args.fallback_threshold;
@@ -97,10 +102,13 @@ impl BlockSource for HlNodeBlockSource {
         Box::pin(async move {
             let Some(dir) = FileOperations::find_latest_hourly_file(&args.root) else {
                 warn!(
-                    "No EVM blocks from hl-node found at {:?}; fallback to s3/ingest-dir",
+                    "No EVM blocks from hl-node found at {:?}",
                     args.root
                 );
-                return fallback.find_latest_block_number().await;
+                return match fallback {
+                    Some(f) => f.find_latest_block_number().await,
+                    None => None,
+                };
             };
 
             match FileOperations::read_last_block_from_file(&dir) {
@@ -110,17 +118,20 @@ impl BlockSource for HlNodeBlockSource {
                 }
                 None => {
                     warn!(
-                        "Failed to parse the hl-node hourly file at {:?}; fallback to s3/ingest-dir",
+                        "Failed to parse the hl-node hourly file at {:?}",
                         dir
                     );
-                    fallback.find_latest_block_number().await
+                    match fallback {
+                        Some(f) => f.find_latest_block_number().await,
+                        None => None,
+                    }
                 }
             }
         })
     }
 
     fn recommended_chunk_size(&self) -> u64 {
-        self.fallback.recommended_chunk_size()
+        self.fallback.as_ref().map(|f| f.recommended_chunk_size()).unwrap_or(1)
     }
 }
 
@@ -253,7 +264,7 @@ impl HlNodeBlockSource {
     }
 
     pub async fn new(
-        fallback: BlockSourceBoxed,
+        fallback: Option<BlockSourceBoxed>,
         args: HlNodeBlockSourceArgs,
         next_block_number: u64,
     ) -> Self {

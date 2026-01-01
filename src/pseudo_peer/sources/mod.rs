@@ -7,6 +7,7 @@ use std::{sync::Arc, time::Duration};
 mod cached;
 mod hl_node;
 mod local;
+#[cfg(feature = "s3")]
 mod s3;
 mod utils;
 
@@ -14,6 +15,7 @@ mod utils;
 pub use cached::CachedBlockSource;
 pub use hl_node::{HlNodeBlockSource, HlNodeBlockSourceArgs};
 pub use local::LocalBlockSource;
+#[cfg(feature = "s3")]
 pub use s3::S3BlockSource;
 
 const DEFAULT_POLLING_INTERVAL: Duration = Duration::from_millis(25);

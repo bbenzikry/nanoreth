@@ -129,6 +129,7 @@ libc = "0.2"
 
 [features]
 default = ["jemalloc"]
+s3 = []
 jemalloc = ["dep:tikv-jemallocator"]
 asm-keccak = [
     "reth-node-core/asm-keccak",
